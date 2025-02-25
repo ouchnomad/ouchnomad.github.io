@@ -1,4 +1,6 @@
-## Hi there 👋
+## Привет! Меня зовут Руслан 👋
+
+🔥 плагин для генерации данных в Figma
 
 <!--
 **ouchnomad/ouchnomad** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
