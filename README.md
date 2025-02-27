@@ -2,6 +2,8 @@
 
 🔥 плагин для генерации данных в Figma
 
+https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExbW96cXZneTZrOGV1YTJqdno5cHM5M3N6NWVudjllcWFjamcwZWh4aCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/xkZjcIyuULFJlyy7Io/giphy.gif
+
 <!--
 **ouchnomad/ouchnomad** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
 
