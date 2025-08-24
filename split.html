@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Калькулятор долгов</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <!-- Подключаем Roboto Mono с Google Fonts -->
+    <link href="https://fonts.googleapis.com/css?family=Roboto+Mono:400,500,700&display=swap" rel="stylesheet">
+    <style>
+      html, body {
+        background: #18181b !important;
+        font-family: 'Roboto Mono', monospace !important;
+      }
+      /* Скрыть скроллбар для красоты */
+      ::-webkit-scrollbar {
+        width: 8px;
+        background: #23232a;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #33334a;
+        border-radius: 4px;
+      }
+      /* Применяем Roboto Mono ко всему приложению */
+      #app, #app * {
+        font-family: 'Roboto Mono', monospace !important;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen text-gray-100">
+    <div id="app" class="max-w-2xl mx-auto mt-8 space-y-8">
+      <p>Привет 👋 Для обратной связи пиши в telegram @ouchnomad</p>
+      <!-- Блок: Участники -->
+      <div class="bg-gray-900 rounded-lg shadow-lg p-6 mb-6 border border-gray-700">
+        <section>
+          <h2 class="text-lg font-semibold mb-2">🙋🏻‍♂️ Участники</h2>
+          <form @submit.prevent="addParticipant" class="flex gap-2 mb-3">
+            <input
+              v-model="newParticipant"
+              type="text"
+              placeholder="Имя участника"
+              class="border border-gray-700 bg-gray-900 text-gray-100 rounded px-2 py-1 flex-1 placeholder-gray-400"
+            />
+            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded">Добавить</button>
+          </form>
+          <ul class="flex flex-wrap gap-2">
+            <li v-for="(p, idx) in state.participants" :key="p" class="bg-gray-700 px-3 py-1 rounded-full flex items-center">
+              {{ p }}
+              <button @click="removeParticipant(idx)" class="ml-2 text-red-400 font-bold hover:text-red-300">&times;</button>
+            </li>
+          </ul>
+        </section>
+      </div>
+
+      <!-- Блок: Траты -->
+      <div class="bg-gray-900 rounded-lg shadow-lg p-6 mb-6 border border-gray-700">
+        <section>
+          <h2 class="text-lg font-semibold mb-2">💰 Траты</h2>
+          <form @submit.prevent="addExpense" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4" autocomplete="off">
+            <!-- Плательщик -->
+            <div>
+              <label class="block mb-1 font-medium">Кто оплатил?</label>
+              <select v-model="expenseForm.payer" class="border border-gray-700 bg-gray-900 text-gray-100 rounded px-2 py-1 w-full">
+                <option value="" disabled>Выберите участника</option>
+                <option v-for="p in state.participants" :key="p" :value="p">{{ p }}</option>
+              </select>
+            </div>
+            <!-- Описание -->
+            <div>
+              <label class="block mb-1 font-medium">За что (необязательно)</label>
+              <input v-model="expenseForm.description" type="text" placeholder="Например, за ужин" class="border border-gray-700 bg-gray-900 text-gray-100 rounded px-2 py-1 w-full placeholder-gray-400" />
+            </div>
+
+            <!-- Переключатель режима разделения траты -->
+            <div class="md:col-span-2 mb-2">
+              <label class="block mb-1 font-medium">Как разделить трату?</label>
+              <div class="flex gap-4">
+                <label class="flex items-center cursor-pointer">
+                  <input
+                    type="radio"
+                    value="even"
+                    v-model="expenseForm.splitMode"
+                    class="mr-2"
+                  />
+                  <span>Поровну</span>
+                </label>
+                <label class="flex items-center cursor-pointer">
+                  <input
+                    type="radio"
+                    value="items"
+                    v-model="expenseForm.splitMode"
+                    class="mr-2"
+                  />
+                  <span>По позициям</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Поля для режима "поровну" -->
+            <template v-if="expenseForm.splitMode === 'even'">
+              <!-- За кого оплачено? -->
+              <div class="md:col-span-2">
+                <label class="block mb-1 font-medium">За кого оплачено?</label>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    v-for="p in state.participants"
+                    :key="p"
+                    type="button"
+                    @click="toggleForWhom(p)"
+                    :class="[
+                      'px-3 py-1 rounded-full border',
+                      expenseForm.forWhom.includes(p) ? 'bg-green-600 text-white border-green-600' : 'bg-gray-800 text-gray-200 border-gray-700',
+                      'focus:outline-none'
+                    ]"
+                  >
+                    {{ p }}
+                  </button>
+                  <button
+                    v-if="state.participants.length"
+                    type="button"
+                    @click="selectAllForWhom"
+                    :class="[
+                      'px-3 py-1 rounded-full border',
+                      expenseForm.forWhom.length === state.participants.length ? 'bg-green-700 text-white border-green-700' : 'bg-gray-700 text-gray-300 border-gray-600',
+                      'focus:outline-none'
+                    ]"
+                  >
+                    Все
+                  </button>
+                </div>
+              </div>
+              <!-- Поле ввода суммы только для режима "поровну" -->
+              <div class="md:col-span-2">
+                <label class="block mb-1 font-medium">Сумма</label>
+                <input
+                  v-model.number="expenseForm.amount"
+                  type="number"
+                  min="0"
+                  placeholder="Введите сумму"
+                  class="border border-gray-700 bg-gray-900 text-gray-100 rounded px-2 py-1 w-full placeholder-gray-400"
+                />
+              </div>
+            </template>
+
+            <!-- Поля для режима "по позициям" -->
+            <template v-if="expenseForm.splitMode === 'items'">
+              <div class="md:col-span-2">
+                <label class="block mb-1 font-medium">Позиции в чеке:</label>
+                <button type="button" @click="addItem" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded mb-2">+ Добавить позицию</button>
+                
+                <div v-for="(item, itemIndex) in expenseForm.items" :key="item.id" class="border border-gray-700 bg-gray-900 rounded p-3 mb-2">
+                  <div class="flex justify-between items-center mb-2">
+                    <span class="font-medium">Позиция {{ itemIndex + 1 }}</span>
+                    <button type="button" @click="removeItem(itemIndex)" class="text-red-400 font-bold hover:text-red-300">&times;</button>
+                  </div>
+                  
+                  <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
+                    <input v-model="item.name" type="text" placeholder="Название" class="border border-gray-700 bg-gray-800 text-gray-100 rounded px-2 py-1 placeholder-gray-400" />
+                    <input v-model.number="item.price" type="number" min="0" placeholder="Стоимость" class="border border-gray-700 bg-gray-800 text-gray-100 rounded px-2 py-1 placeholder-gray-400" />
+                    <input v-model.number="item.quantity" type="number" min="1" placeholder="Кол-во" class="border border-gray-700 bg-gray-800 text-gray-100 rounded px-2 py-1 placeholder-gray-400" />
+                  </div>
+                  
+                  <div>
+                    <label class="block mb-1 font-medium">Кто ел/пил?</label>
+                    <div class="flex flex-wrap gap-2">
+                      <button
+                        v-for="p in state.participants"
+                        :key="p"
+                        type="button"
+                        @click="toggleItemConsumer(itemIndex, p)"
+                        :class="[
+                          'px-3 py-1 rounded-full border',
+                          item.consumers.includes(p) ? 'bg-green-600 text-white border-green-600' : 'bg-gray-800 text-gray-200 border-gray-700',
+                          'focus:outline-none'
+                        ]"
+                      >
+                        {{ p }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Новое поле для итоговой суммы чека (всегда отображается в режиме "по позициям") -->
+                <div class="bg-gray-800 p-2 rounded flex flex-col gap-1 mb-2">
+                  <div>
+                    <span class="font-medium">Общая сумма чека:</span>
+                    <input
+                      v-model.number="expenseForm.amount"
+                      type="number"
+                      min="0"
+                      placeholder="Введите итоговую сумму чека"
+                      class="border border-gray-700 bg-gray-900 text-gray-100 rounded px-2 py-1 w-40 ml-2 placeholder-gray-400"
+                    />
+                    <span class="ml-2 text-gray-500" title="Введите итоговую сумму из чека. Мы сверим ее с суммой позиций ниже.">ⓘ</span>
+                  </div>
+                </div>
+
+                <div class="bg-gray-800 p-2 rounded flex flex-col gap-1">
+                  <div class="flex items-center gap-2">
+                    <strong>Сумма по позициям: {{ calculatedTotal }}₽</strong>
+                    <span
+                      v-if="expenseForm.amount !== null && expenseForm.amount !== ''"
+                      :class="{
+                        'text-green-400 font-semibold': Math.abs(calculatedTotal - expenseForm.amount) < 0.01,
+                        'text-yellow-400 font-semibold': calculatedTotal < expenseForm.amount - 0.01,
+                        'text-red-400 font-semibold': calculatedTotal > expenseForm.amount + 0.01
+                      }"
+                    >
+                      <template v-if="Math.abs(calculatedTotal - expenseForm.amount) < 0.01">
+                        ✔ Все верно!
+                      </template>
+                      <template v-else-if="calculatedTotal < expenseForm.amount - 0.01">
+                        ⚠ Остаток к распределению: {{ (expenseForm.amount - calculatedTotal).toFixed(2) }}₽
+                        <span
+                          class="underline cursor-pointer ml-2"
+                          @click="showRemainderActions = !showRemainderActions"
+                          title="Что делать с остатком?"
+                        >[?]</span>
+                      </template>
+                      <template v-else-if="calculatedTotal > expenseForm.amount + 0.01">
+                        ❗ Перерасход! Разница: {{ (calculatedTotal - expenseForm.amount).toFixed(2) }}₽. Проверьте цены.
+                      </template>
+                    </span>
+                  </div>
+                  <!-- Действия по остатку -->
+                  <div v-if="showRemainderActions && expenseForm.amount !== null && expenseForm.amount !== '' && calculatedTotal < expenseForm.amount - 0.01" class="mt-2 flex flex-col gap-1">
+                    <button
+                      type="button"
+                      class="bg-yellow-700 hover:bg-yellow-800 text-yellow-200 px-2 py-1 rounded text-sm w-max"
+                      @click="addTipItem"
+                    >Добавить позицию "Чаевые"</button>
+                    <button
+                      type="button"
+                      class="bg-yellow-700 hover:bg-yellow-800 text-yellow-200 px-2 py-1 rounded text-sm w-max"
+                      @click="addOtherItem"
+                    >Добавить позицию "Прочее"</button>
+                    <button
+                      type="button"
+                      class="bg-yellow-700 hover:bg-yellow-800 text-yellow-200 px-2 py-1 rounded text-sm w-max"
+                      @click="spreadRemainder"
+                    >Распределить остаток пропорционально</button>
+                  </div>
+                </div>
+                <div v-if="!expenseForm.items.length" class="text-gray-500 p-2">Добавьте хотя бы одну позицию</div>
+                <!-- Вывод ошибок для режима "по позициям" -->
+                <div v-if="expenseForm.splitMode === 'items' && itemsErrors.length" class="bg-red-900 text-red-300 rounded p-2 mt-2 text-sm">
+                  <ul class="list-disc pl-5">
+                    <li v-for="(err, idx) in itemsErrors" :key="idx">{{ err }}</li>
+                  </ul>
+                </div>
+              </div>
+            </template>
+
+            <button
+              type="submit"
+              class="bg-green-700 hover:bg-green-800 text-white px-3 py-1 rounded md:col-span-2"
+              :disabled="expenseForm.splitMode === 'items' ? itemsErrors.length > 0 : false"
+              :class="{
+                'opacity-50 cursor-not-allowed': expenseForm.splitMode === 'items' && itemsErrors.length > 0
+              }"
+            >Добавить трату</button>
+          </form>
+          <ul v-if="state.expenses.length" class="mt-3 space-y-1">
+            <li v-for="e in state.expenses" :key="e.id" class="flex items-center justify-between bg-gray-800 px-2 py-1 rounded">
+              <span>
+                <b>{{ e.payer }}</b> оплатил <b>{{ e.amount }}₽ </b>
+                <span v-if="e.description">({{ e.description }})</span>
+                <span v-if="e.splitMode === 'even'"> за: <span class="italic">{{ e.forWhom.join(', ') }}</span></span>
+                <span v-else-if="e.splitMode === 'items'">
+                  по позициям
+                  <span v-if="e.items && e.items.length">
+                    <span
+                      v-if="Math.abs(e.amount - (e.items.reduce((t, item) => t + item.price * item.quantity, 0))) < 0.01"
+                      class="ml-2 text-green-400 font-semibold"
+                      title="Сумма позиций совпадает с суммой чека"
+                    >✔</span>
+                    <span
+                      v-else-if="e.items.reduce((t, item) => t + item.price * item.quantity, 0) < e.amount - 0.01"
+                      class="ml-2 text-yellow-400 font-semibold"
+                      title="Остаток к распределению"
+                    >⚠ Остаток: {{ (e.amount - e.items.reduce((t, item) => t + item.price * item.quantity, 0)).toFixed(2) }}₽</span>
+                    <span
+                      v-else
+                      class="ml-2 text-red-400 font-semibold"
+                      title="Перерасход"
+                    >❗ Перерасход: {{ (e.items.reduce((t, item) => t + item.price * item.quantity, 0) - e.amount).toFixed(2) }}₽</span>
+                  </span>
+                </span>
+              </span>
+              <button @click="removeExpense(e.id)" class="text-red-400 font-bold hover:text-red-300">&times;</button>
+            </li>
+          </ul>
+        </section>
+      </div>
+
+      <!-- Блок: Кому перевести -->
+      <div class="bg-gray-900 rounded-lg shadow-lg p-6 border border-gray-700">
+        <section>
+          <h2 class="text-lg font-semibold mb-2">✅ Кому перевести:</h2>
+          <ul v-if="transfers.length" class="list-disc pl-5 space-y-1">
+            <li v-for="(t, idx) in transfers" :key="idx">
+              <b>{{ t.from }}</b> → <b>{{ t.to }}</b>: <b>{{ t.amount.toFixed(2) }}₽</b>
+            </li>
+          </ul>
+          <div v-else class="text-gray-500">Нет переводов для отображения.</div>
+        </section>
+      </div>
+    </div>
+
+    <script>
+      const { createApp, reactive, computed, watch, ref } = Vue;
+
+      createApp({
+        setup() {
+          // --- Состояние ---
+          const state = reactive({
+            eventName: '',
+            participants: [],
+            expenses: []
+          });
+
+          // --- Вводы ---
+          const newParticipant = ref('');
+          const expenseForm = reactive({
+            payer: '',
+            amount: null,
+            description: '',
+            forWhom: [],
+            splitMode: 'even',
+            items: []
+          });
+
+          // --- UI состояния для подсказок ---
+          const showRemainderActions = ref(false);
+
+          // --- Ошибки для режима "по позициям" ---
+          const itemsErrors = computed(() => {
+            if (expenseForm.splitMode !== 'items') return [];
+            const errors = [];
+            if (!expenseForm.payer) errors.push('Не выбран плательщик.');
+            if (!expenseForm.items.length) errors.push('Добавьте хотя бы одну позицию.');
+            if (expenseForm.amount === null || expenseForm.amount === '' || expenseForm.amount <= 0) errors.push('Введите итоговую сумму чека (больше 0).');
+            expenseForm.items.forEach((item, idx) => {
+              if (!item.name || !item.name.trim()) errors.push(`Позиция ${idx + 1}: не указано название.`);
+              if (item.price <= 0) errors.push(`Позиция ${idx + 1}: цена должна быть больше 0.`);
+              if (item.quantity <= 0) errors.push(`Позиция ${idx + 1}: количество должно быть больше 0.`);
+              if (!item.consumers || !item.consumers.length) errors.push(`Позиция ${idx + 1}: выберите хотя бы одного едока.`);
+            });
+            return errors;
+          });
+
+          // --- LocalStorage ---
+          const STORAGE_KEY = 'debt_calc_state_v2';
+          function saveState() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({
+              eventName: state.eventName,
+              participants: state.participants,
+              expenses: state.expenses
+            }));
+          }
+          function loadState() {
+            const data = localStorage.getItem(STORAGE_KEY);
+            if (data) {
+              try {
+                const parsed = JSON.parse(data);
+                state.eventName = parsed.eventName || '';
+                state.participants = parsed.participants || [];
+                state.expenses = parsed.expenses || [];
+              } catch {}
+            }
+          }
+          loadState();
+
+          watch(state, saveState, { deep: true });
+
+          // --- Методы участников ---
+          function addParticipant() {
+            const name = newParticipant.value.trim();
+            if (name && !state.participants.includes(name)) {
+              state.participants.push(name);
+              newParticipant.value = '';
+            }
+          }
+          function removeParticipant(idx) {
+            const name = state.participants[idx];
+            state.participants.splice(idx, 1);
+            // Удаляем из forWhom в тратах
+            state.expenses.forEach(e => {
+              if (e.splitMode === 'even') {
+                e.forWhom = e.forWhom.filter(p => p !== name);
+              } else if (e.splitMode === 'items') {
+                e.items.forEach(item => {
+                  item.consumers = item.consumers.filter(p => p !== name);
+                });
+              }
+            });
+            // Удаляем траты, где payer был удалён
+            state.expenses = state.expenses.filter(e => e.payer !== name);
+          }
+
+          // --- Методы для выбора forWhom (chips) ---
+          function toggleForWhom(p) {
+            const idx = expenseForm.forWhom.indexOf(p);
+            if (idx === -1) {
+              expenseForm.forWhom.push(p);
+            } else {
+              expenseForm.forWhom.splice(idx, 1);
+            }
+          }
+          function selectAllForWhom() {
+            if (expenseForm.forWhom.length === state.participants.length) {
+              expenseForm.forWhom = [];
+            } else {
+              expenseForm.forWhom = [...state.participants];
+            }
+          }
+
+          // --- Методы для позиций ---
+          function addItem() {
+            expenseForm.items.push({
+              id: Date.now() + Math.random(),
+              name: '',
+              price: 0,
+              quantity: 1,
+              consumers: []
+            });
+          }
+          function removeItem(itemIndex) {
+            expenseForm.items.splice(itemIndex, 1);
+          }
+          function toggleItemConsumer(itemIndex, participant) {
+            const item = expenseForm.items[itemIndex];
+            const idx = item.consumers.indexOf(participant);
+            if (idx === -1) {
+              item.consumers.push(participant);
+            } else {
+              item.consumers.splice(idx, 1);
+            }
+          }
+
+          // --- Вычисление общей суммы позиций ---
+          const calculatedTotal = computed(() => {
+            return expenseForm.items.reduce((total, item) => {
+              return total + (item.price * item.quantity);
+            }, 0);
+          });
+
+          // Для обратной совместимости с остальным кодом
+          const totalItemsAmount = calculatedTotal;
+
+          // --- Валидация суммы позиций и amount ---
+          watch(
+            () => [expenseForm.items.map(i => [i.price, i.quantity]), expenseForm.amount],
+            () => {
+              // UI обновится автоматически
+              showRemainderActions.value = false;
+            },
+            { deep: true }
+          );
+
+          // --- Действия по остатку ---
+          function addTipItem() {
+            const remainder = +(expenseForm.amount - calculatedTotal.value).toFixed(2);
+            if (remainder > 0.01) {
+              expenseForm.items.push({
+                id: Date.now() + Math.random(),
+                name: 'Чаевые',
+                price: remainder,
+                quantity: 1,
+                consumers: [...state.participants]
+              });
+              showRemainderActions.value = false;
+            }
+          }
+          function addOtherItem() {
+            const remainder = +(expenseForm.amount - calculatedTotal.value).toFixed(2);
+            if (remainder > 0.01) {
+              expenseForm.items.push({
+                id: Date.now() + Math.random(),
+                name: 'Прочее',
+                price: remainder,
+                quantity: 1,
+                consumers: [...state.participants]
+              });
+              showRemainderActions.value = false;
+            }
+          }
+          function spreadRemainder() {
+            const remainder = +(expenseForm.amount - calculatedTotal.value).toFixed(2);
+            if (remainder > 0.01 && expenseForm.items.length) {
+              // Пропорционально стоимости
+              const sum = expenseForm.items.reduce((s, item) => s + (item.price * item.quantity), 0);
+              if (sum === 0) return;
+              expenseForm.items.forEach(item => {
+                const part = (item.price * item.quantity) / sum;
+                // Увеличиваем price только у первой quantity (если quantity > 1, корректируем price)
+                item.price = +(item.price + remainder * part / item.quantity).toFixed(2);
+              });
+              showRemainderActions.value = false;
+            }
+          }
+
+          // --- Методы трат ---
+          function addExpense() {
+            if (!expenseForm.payer) return;
+
+            if (expenseForm.splitMode === 'even') {
+              if (!expenseForm.amount || expenseForm.amount <= 0) return;
+              let forWhom = expenseForm.forWhom.length ? [...expenseForm.forWhom] : [...state.participants];
+              // Проверка: payer и forWhom должны быть в участниках
+              if (!state.participants.includes(expenseForm.payer)) return;
+              forWhom = forWhom.filter(p => state.participants.includes(p));
+              if (!forWhom.length) return;
+
+              state.expenses.push({
+                id: Date.now() + Math.random(),
+                payer: expenseForm.payer,
+                amount: Number(expenseForm.amount),
+                description: expenseForm.description,
+                splitMode: 'even',
+                forWhom,
+                items: []
+              });
+            } else if (expenseForm.splitMode === 'items') {
+              // Исправлено: теперь проверяем все поля корректно и не блокируем добавление, если все валидно
+              if (itemsErrors.value.length > 0) return;
+
+              // Проверяем, что все позиции валидны
+              const validItems = expenseForm.items.filter(item =>
+                item.name && item.name.trim() &&
+                item.price > 0 &&
+                item.quantity > 0 &&
+                item.consumers && item.consumers.length > 0
+              );
+              // calculatedTotal для сохранения в expense
+              const calcTotal = validItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+              state.expenses.push({
+                id: Date.now() + Math.random(),
+                payer: expenseForm.payer,
+                amount: Number(expenseForm.amount), // amount — эталонная сумма чека
+                description: expenseForm.description,
+                splitMode: 'items',
+                forWhom: [],
+                items: validItems.map(item => ({
+                  ...item,
+                  consumers: item.consumers.filter(p => state.participants.includes(p))
+                })),
+                calculatedTotal: calcTotal
+              });
+            }
+
+            // Сброс формы
+            expenseForm.payer = '';
+            expenseForm.amount = null;
+            expenseForm.description = '';
+            expenseForm.forWhom = [];
+            expenseForm.splitMode = 'even';
+            expenseForm.items = [];
+            showRemainderActions.value = false;
+          }
+          function removeExpense(id) {
+            state.expenses = state.expenses.filter(e => e.id !== id);
+          }
+
+          // --- Функция для расчета деталей траты ---
+          function calculateExpenseDetails(expense) {
+            const details = {};
+
+            if (expense.splitMode === 'even') {
+              // Старая логика: делим поровну
+              const share = expense.amount / expense.forWhom.length;
+              expense.forWhom.forEach(p => {
+                details[p] = (details[p] || 0) + share;
+              });
+            } else if (expense.splitMode === 'items') {
+              // Новая логика: по позициям с коррекцией
+              // amount — эталонная сумма чека
+              // calculatedTotal — сумма по позициям (может быть не равна amount)
+              let calcTotal = 0;
+              if (typeof expense.calculatedTotal === 'number') {
+                calcTotal = expense.calculatedTotal;
+              } else if (expense.items && expense.items.length) {
+                calcTotal = expense.items.reduce((total, item) => total + (item.price * item.quantity), 0);
+              }
+              let scale = 1;
+              if (calcTotal > 0 && typeof expense.amount === 'number') {
+                scale = expense.amount / calcTotal;
+              }
+              expense.items.forEach(item => {
+                const itemTotal = item.price * item.quantity * scale;
+                const share = item.consumers.length > 0 ? itemTotal / item.consumers.length : 0;
+                item.consumers.forEach(p => {
+                  details[p] = (details[p] || 0) + share;
+                });
+              });
+            }
+
+            return details;
+          }
+
+          // --- Расчёт переводов ---
+          const transfers = computed(() => {
+            if (!state.participants.length || !state.expenses.length) return [];
+
+            // 1. Считаем totalPaid и totalDebt для каждого
+            const balances = {};
+            state.participants.forEach(p => {
+              balances[p] = { paid: 0, debt: 0, balance: 0 };
+            });
+
+            state.expenses.forEach(e => {
+              if (balances[e.payer]) {
+                balances[e.payer].paid += e.amount;
+              }
+
+              // Используем новую функцию для расчета долгов
+              const expenseDetails = calculateExpenseDetails(e);
+              Object.entries(expenseDetails).forEach(([participant, debt]) => {
+                if (balances[participant]) {
+                  balances[participant].debt += debt;
+                }
+              });
+            });
+
+            state.participants.forEach(p => {
+              balances[p].balance = +(balances[p].paid - balances[p].debt).toFixed(2);
+            });
+
+            // 2. Формируем массив для расчёта переводов
+            const people = state.participants.map(p => ({
+              name: p,
+              balance: balances[p].balance
+            }));
+
+            // 3. Алгоритм оптимизации переводов
+            function calculateTransfers(people) {
+              const res = [];
+              // Копируем и сортируем
+              let debtors = people.filter(p => p.balance < -0.01).map(p => ({...p}));
+              let creditors = people.filter(p => p.balance > 0.01).map(p => ({...p}));
+              // Округление до копеек
+              debtors.forEach(d => d.balance = +d.balance.toFixed(2));
+              creditors.forEach(c => c.balance = +c.balance.toFixed(2));
+              // Пока есть должники и кредиторы
+              while (debtors.length && creditors.length) {
+                // Самый большой должник и кредитор
+                debtors.sort((a, b) => a.balance - b.balance); // по убыванию (отрицательные)
+                creditors.sort((a, b) => b.balance - a.balance); // по убыванию
+                let debtor = debtors[0];
+                let creditor = creditors[0];
+                let amount = Math.min(-debtor.balance, creditor.balance);
+                amount = +amount.toFixed(2);
+                if (amount < 0.01) break;
+                res.push({ from: debtor.name, to: creditor.name, amount });
+                debtor.balance += amount;
+                creditor.balance -= amount;
+                // Удаляем, если баланс ~0
+                if (debtor.balance > -0.01) debtors.shift();
+                if (creditor.balance < 0.01) creditors.shift();
+              }
+              return res;
+            }
+
+            return calculateTransfers(people);
+          });
+
+          // --- Возврат в шаблон ---
+          return {
+            state,
+            newParticipant,
+            expenseForm,
+            addParticipant,
+            removeParticipant,
+            addExpense,
+            removeExpense,
+            transfers,
+            toggleForWhom,
+            selectAllForWhom,
+            addItem,
+            removeItem,
+            toggleItemConsumer,
+            totalItemsAmount,
+            calculatedTotal,
+            showRemainderActions,
+            addTipItem,
+            addOtherItem,
+            spreadRemainder,
+            itemsErrors
+          };
+        }
+      }).mount('#app');
+    </script>
+  </body>
+</html>
