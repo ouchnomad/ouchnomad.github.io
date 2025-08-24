@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Калькулятор долгов</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+  <div id="app" class="bg-white shadow-lg rounded-lg p-6 w-full max-w-2xl">
+    <h1 class="text-2xl font-bold mb-4">Калькулятор долгов</h1>
+    <!-- Секция 1: Настройка события -->
+    <section class="mb-6">
+      <h2 class="text-lg font-semibold mb-2">1. Событие и участники</h2>
+      <input v-model="state.eventName" type="text" placeholder="Название события" class="border rounded px-2 py-1 mb-2 w-full" />
+      <div class="flex mb-2">
+        <input v-model="newParticipant" type="text" placeholder="Имя участника" class="border rounded px-2 py-1 flex-1 mr-2" @keyup.enter="addParticipant" />
+        <button @click="addParticipant" class="bg-blue-500 text-white px-3 py-1 rounded">Добавить</button>
+      </div>
+      <div v-if="state.participants.length" class="flex flex-wrap gap-2">
+        <span v-for="(p, idx) in state.participants" :key="p" class="bg-gray-200 px-2 py-1 rounded flex items-center">
+          {{ p }}
+          <button @click="removeParticipant(idx)" class="ml-1 text-red-500 font-bold">&times;</button>
+        </span>
+      </div>
+    </section>
+
+    <!-- Секция 2: Добавление трат -->
+    <section class="mb-6">
+      <h2 class="text-lg font-semibold mb-2">2. Добавить трату</h2>
+      <form @submit.prevent="addExpense" class="grid grid-cols-1 md:grid-cols-2 gap-2">
+        <select v-model="expenseForm.payer" required class="border rounded px-2 py-1">
+          <option value="" disabled>Кто оплатил?</option>
+          <option v-for="p in state.participants" :key="p" :value="p">{{ p }}</option>
+        </select>
+        <input v-model.number="expenseForm.amount" type="number" min="1" required placeholder="Сумма (руб)" class="border rounded px-2 py-1" />
+        <input v-model="expenseForm.description" type="text" placeholder="Описание (необязательно)" class="border rounded px-2 py-1 md:col-span-2" />
+        <select v-model="expenseForm.forWhom" multiple class="border rounded px-2 py-1 md:col-span-2" size="3">
+          <option v-for="p in state.participants" :key="p" :value="p">{{ p }}</option>
+        </select>
+        <button type="submit" class="bg-green-500 text-white px-3 py-1 rounded md:col-span-2">Добавить трату</button>
+      </form>
+      <ul v-if="state.expenses.length" class="mt-3 space-y-1">
+        <li v-for="e in state.expenses" :key="e.id" class="flex items-center justify-between bg-gray-50 px-2 py-1 rounded">
+          <span>
+            <b>{{ e.payer }}</b> оплатил <b>{{ e.amount }}₽</b>
+            <span v-if="e.description">({{ e.description }})</span>
+            за: <span class="italic">{{ e.forWhom.join(', ') }}</span>
+          </span>
+          <button @click="removeExpense(e.id)" class="text-red-500 font-bold">&times;</button>
+        </li>
+      </ul>
+    </section>
+
+    <!-- Секция 3: Результаты -->
+    <section>
+      <h2 class="text-lg font-semibold mb-2">3. Кому перевести:</h2>
+      <ul v-if="transfers.length" class="list-disc pl-5 space-y-1">
+        <li v-for="(t, idx) in transfers" :key="idx">
+          <b>{{ t.from }}</b> → <b>{{ t.to }}</b>: <b>{{ t.amount.toFixed(2) }}₽</b>
+        </li>
+      </ul>
+      <div v-else class="text-gray-500">Нет переводов для отображения.</div>
+    </section>
+  </div>
+
+  <script>
+    const { createApp, reactive, computed, watch } = Vue;
+
+    createApp({
+      setup() {
+        // --- Состояние ---
+        const state = reactive({
+          eventName: '',
+          participants: [],
+          expenses: []
+        });
+
+        // --- Вводы ---
+        let newParticipant = Vue.ref('');
+        let expenseForm = reactive({
+          payer: '',
+          amount: null,
+          description: '',
+          forWhom: []
+        });
+
+        // --- LocalStorage ---
+        const STORAGE_KEY = 'debt_calc_state_v1';
+        function saveState() {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            eventName: state.eventName,
+            participants: state.participants,
+            expenses: state.expenses
+          }));
+        }
+        function loadState() {
+          const data = localStorage.getItem(STORAGE_KEY);
+          if (data) {
+            try {
+              const parsed = JSON.parse(data);
+              state.eventName = parsed.eventName || '';
+              state.participants = parsed.participants || [];
+              state.expenses = parsed.expenses || [];
+            } catch {}
+          }
+        }
+        loadState();
+
+        watch(state, saveState, { deep: true });
+
+        // --- Методы участников ---
+        function addParticipant() {
+          const name = newParticipant.value.trim();
+          if (name && !state.participants.includes(name)) {
+            state.participants.push(name);
+            newParticipant.value = '';
+          }
+        }
+        function removeParticipant(idx) {
+          const name = state.participants[idx];
+          state.participants.splice(idx, 1);
+          // Удаляем из forWhom в тратах
+          state.expenses.forEach(e => {
+            e.forWhom = e.forWhom.filter(p => p !== name);
+          });
+          // Удаляем траты, где payer был удалён
+          state.expenses = state.expenses.filter(e => e.payer !== name);
+        }
+
+        // --- Методы трат ---
+        function addExpense() {
+          if (!expenseForm.payer || !expenseForm.amount || expenseForm.amount <= 0) return;
+          let forWhom = expenseForm.forWhom.length ? [...expenseForm.forWhom] : [...state.participants];
+          // Проверка: payer и forWhom должны быть в участниках
+          if (!state.participants.includes(expenseForm.payer)) return;
+          forWhom = forWhom.filter(p => state.participants.includes(p));
+          if (!forWhom.length) return;
+          state.expenses.push({
+            id: Date.now() + Math.random(),
+            payer: expenseForm.payer,
+            amount: Number(expenseForm.amount),
+            description: expenseForm.description,
+            forWhom
+          });
+          // Сброс формы
+          expenseForm.payer = '';
+          expenseForm.amount = null;
+          expenseForm.description = '';
+          expenseForm.forWhom = [];
+        }
+        function removeExpense(id) {
+          state.expenses = state.expenses.filter(e => e.id !== id);
+        }
+
+        // --- Расчёт переводов ---
+        const transfers = computed(() => {
+          if (!state.participants.length || !state.expenses.length) return [];
+          // 1. Считаем totalPaid и totalDebt для каждого
+          const balances = {};
+          state.participants.forEach(p => {
+            balances[p] = { paid: 0, debt: 0, balance: 0 };
+          });
+          state.expenses.forEach(e => {
+            if (balances[e.payer]) {
+              balances[e.payer].paid += e.amount;
+            }
+            const share = e.amount / e.forWhom.length;
+            e.forWhom.forEach(p => {
+              if (balances[p]) {
+                balances[p].debt += share;
+              }
+            });
+          });
+          state.participants.forEach(p => {
+            balances[p].balance = +(balances[p].paid - balances[p].debt).toFixed(2);
+          });
+
+          // 2. Формируем массив для расчёта переводов
+          const people = state.participants.map(p => ({
+            name: p,
+            balance: balances[p].balance
+          }));
+
+          // 3. Алгоритм оптимизации переводов
+          function calculateTransfers(people) {
+            const res = [];
+            // Копируем и сортируем
+            let debtors = people.filter(p => p.balance < -0.01).map(p => ({...p}));
+            let creditors = people.filter(p => p.balance > 0.01).map(p => ({...p}));
+            // Округление до копеек
+            debtors.forEach(d => d.balance = +d.balance.toFixed(2));
+            creditors.forEach(c => c.balance = +c.balance.toFixed(2));
+            // Пока есть должники и кредиторы
+            while (debtors.length && creditors.length) {
+              // Самый большой должник и кредитор
+              debtors.sort((a, b) => a.balance - b.balance); // по убыванию (отрицательные)
+              creditors.sort((a, b) => b.balance - a.balance); // по убыванию
+              let debtor = debtors[0];
+              let creditor = creditors[0];
+              let amount = Math.min(-debtor.balance, creditor.balance);
+              amount = +amount.toFixed(2);
+              if (amount < 0.01) break;
+              res.push({ from: debtor.name, to: creditor.name, amount });
+              debtor.balance += amount;
+              creditor.balance -= amount;
+              // Удаляем, если баланс ~0
+              if (debtor.balance > -0.01) debtors.shift();
+              if (creditor.balance < 0.01) creditors.shift();
+            }
+            return res;
+          }
+
+          return calculateTransfers(people);
+        });
+
+        // --- Возврат в шаблон ---
+        return {
+          state,
+          newParticipant,
+          expenseForm,
+          addParticipant,
+          removeParticipant,
+          addExpense,
+          removeExpense,
+          transfers
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
