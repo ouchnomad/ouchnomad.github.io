@@ -82,14 +82,17 @@
   // ============ НАСТРОЙКИ ============
   const START_DATE = '2021-02';         // год-месяц выхода на первое место работы
 
-  // Опционально: список периодов для суммарного стажа.
-  // Если массив пустой [], считается от START_DATE до сегодня.
-  // Формат: 'ГГГГ-ММ'. end: null означает "по настоящее время".
   const PERIODS = [
     // { start: '2018-03', end: '2020-06' },
     // { start: '2020-07', end: null },
   ];
   // ===================================
+
+  // Склонения месяцев в родительном падеже — для строки "с ..."
+  const MONTHS_GENITIVE = [
+    'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+    'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'
+  ];
 
   function diffYM(from, to) {
     let years = to.getFullYear() - from.getFullYear();
@@ -134,8 +137,9 @@
     document.getElementById('monthsLabel').textContent = plural(data.months, 'месяц', 'месяца', 'месяцев');
 
     const start = parseYM(START_DATE);
-    document.getElementById('since').textContent =
-      ', с ' + start.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+    const monthName = MONTHS_GENITIVE[start.getMonth()];
+    const year = start.getFullYear();
+    document.getElementById('since').textContent = ', с ' + monthName + ' ' + year;
   }
 
   render();
